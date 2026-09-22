@@ -280,7 +280,7 @@
   }
   function win(index) {
     const c = chapters[index];
-    const memory = index===0 ? `<div class="roller-memories" aria-label="Galería de recuerdos de Roller Disco"><img src="roller-01.jpg" alt="Lore patinando en Roller Disco"><img src="roller-02.jpg" alt="Lore en la pista con luces de disco"><img src="roller-04.jpg" alt="Lore celebrando la aventura de patinaje"><img src="roller-03.jpg" alt="Un recuerdo de Lore y Ferney en Roller Disco"></div><video class="roller-video" controls preload="metadata" poster="roller-01.jpg" aria-label="Video de la aventura en Roller Disco"><source src="roller-disco.mp4" type="video/mp4">Tu navegador no puede reproducir este video.</video><p class="roller-video-label">▶ LA VUELTA ESTELAR DE LORE</p>` : `<img class="win-sticker" src="${assets.colombia}" alt="Lore sonriendo">`;
+    const memory = index===0 ? `<div class="roller-memories" aria-label="Galería de recuerdos de Roller Disco"><img src="roller-01.jpg" alt="Lore patinando en Roller Disco"><img src="roller-02.jpg" alt="Lore en la pista con luces de disco"><img src="roller-03.jpg" alt="Un recuerdo de Lore y Ferney en Roller Disco"></div><video class="roller-video" controls preload="metadata" poster="roller-01.jpg" aria-label="Video de la aventura en Roller Disco"><source src="roller-disco.mp4" type="video/mp4">Tu navegador no puede reproducir este video.</video><p class="roller-video-label">▶ LA VUELTA ESTELAR DE LORE</p>` : `<img class="win-sticker" src="${assets.colombia}" alt="Lore sonriendo">`;
     render(`<section class="win-screen"><div class="win-medal">${icon(index===2?'heart':'star',44)}</div><span class="eyebrow">RECUERDO ${index+1} DE 3 CONSEGUIDO</span><h1>${c.reward}</h1><p>${c.message}</p>${memory}<button id="next" class="primary">${index===2?'Descubrir mi sorpresa':'Guardar este recuerdo y seguir'} ${icon('arrow',19)}</button><button class="secondary" id="to-map">Volver a mi aventura</button><div class="saved-notice">${storageWorks?'Tu recuerdo ya está guardado. ♡':'Tu recuerdo sigue contigo mientras esta página esté abierta. ♡'}</div></section>`, 'win');
     $('#next').onclick = () => index===2 ? gift(false) : play(index+1);
     $('#to-map').onclick = home;
@@ -304,10 +304,26 @@
     for(let i=0;i<45;i++){const piece=document.createElement('i');piece.style.cssText=`left:${Math.random()*100}%;background:${['#bf4056','#f1b8c6','#dab24e','#96a985'][i%4]};animation-delay:${Math.random()*.7}s;animation-duration:${2.2+Math.random()*1.5}s;transform:rotate(${Math.random()*180}deg)`;wrap.append(piece);}
     document.body.append(wrap);confettiTimer=setTimeout(()=>wrap.remove(),4600);
   }
-  const gameMusic = new Audio('roller-disco-audio.mp3');
-  gameMusic.loop = true;
-  gameMusic.volume = .22;
-  let musicOn=false;
+  const musicTracks = [new Audio('roller-disco-audio.mp3'), new Audio('roller-disco-audio.mp3')];
+  musicTracks.forEach(track=>{track.preload='auto';track.volume=0;});
+  let musicOn=false, activeTrack=0, loopTimer=null;
+  const maxVolume=.22, crossfadeMs=650;
+  function fade(track,to,duration=crossfadeMs){
+    const from=track.volume, started=performance.now();
+    const tick=now=>{const p=Math.min(1,(now-started)/duration);track.volume=from+(to-from)*p;if(p<1)requestAnimationFrame(tick);};
+    requestAnimationFrame(tick);
+  }
+  function queueLoop(){
+    clearTimeout(loopTimer);const current=musicTracks[activeTrack];
+    if(!musicOn||!isFinite(current.duration)||!current.duration)return;
+    loopTimer=setTimeout(async()=>{
+      if(!musicOn)return;const nextIndex=1-activeTrack,next=musicTracks[nextIndex];
+      next.currentTime=0;next.volume=0;await next.play();fade(next,maxVolume);fade(current,0);
+      setTimeout(()=>current.pause(),crossfadeMs+40);activeTrack=nextIndex;queueLoop();
+    },Math.max(0,(current.duration-.8)*1000));
+  }
+  async function startMusic(){const track=musicTracks[activeTrack];track.currentTime=0;track.volume=0;await track.play();fade(track,maxVolume,450);queueLoop();}
+  function stopMusic(){clearTimeout(loopTimer);musicTracks.forEach(track=>{track.pause();track.currentTime=0;track.volume=0;});}
   /*
   function tone(freq,duration=.14,kind='triangle',vol=.035,delay=0){
     if(!musicOn||!audioContext||document.hidden)return;
@@ -329,9 +345,9 @@
   const sound=$('#sound');
   function soundUI(){sound.innerHTML=icon(musicOn?'music':'muted',18);sound.setAttribute('aria-label',musicOn?'Silenciar música':'Activar música');sound.setAttribute('aria-pressed',String(musicOn));sound.title=musicOn?'Música activada':'Activar música de Roller Disco';}
   sound.onclick=async()=>{
-    try{musicOn=!musicOn;if(musicOn)await gameMusic.play();else gameMusic.pause();soundUI();}catch{musicOn=false;gameMusic.pause();soundUI();}
+    try{musicOn=!musicOn;if(musicOn)await startMusic();else stopMusic();soundUI();}catch{musicOn=false;stopMusic();soundUI();}
   };
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)gameMusic.pause();else if(musicOn)gameMusic.play().catch(()=>{});});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(loopTimer);musicTracks.forEach(track=>track.pause());}else if(musicOn){const track=musicTracks[activeTrack];track.play().then(queueLoop).catch(()=>{});}});
   $('#brand').onclick=home;
   const help=$('#help-dialog'); $('#help').onclick=()=>help.showModal();
   help.querySelectorAll('.dialog-close,.dialog-done').forEach(b=>b.onclick=()=>help.close());
